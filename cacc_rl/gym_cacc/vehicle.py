@@ -5,7 +5,7 @@ class Vehicle():
 		if statistics != None:
 			assert type(statistics) is tuple, "statistics is not a tuple"
 			assert len(statistics) == 7, "statistics is not a 7-tuple"
-			length, width, height, weigth, top_velocity, top_acceleration, top_jerk = statistics
+			length, width, height, weight, top_velocity, top_acceleration, top_jerk = statistics
 
 
 		assert length > 0, "length is not positive"
@@ -15,7 +15,7 @@ class Vehicle():
 		self.width = width
 		self.height = height
 
-		assert weigth > 0, "weight is not positive"
+		assert weight > 0, "weight is not positive"
 		self.weight = weight
 		
 		assert top_velocity > 0, "top_velocity is not positive"
