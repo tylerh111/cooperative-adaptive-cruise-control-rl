@@ -10,15 +10,26 @@ from gym.utils import seeding
 from gym_cacc import Vehicle
 
 class StopAndGo(gym.Env):
+	
 	metadata = {
 		'render.modes':[],
 		'video.frames_per_second':60
 	}
 
-	#target_headway : meters
-	#time_limit : seconds
+
+
+
+
+	"""
+	StopAndGo: __init__
+	
+	"""
 	def __init__(self, vehicle = Vehicle(), target_headway = 2):
 		
+		#custom variables
+		assert target_headway > 0, "target_headway is not positive"
+		self.target_headway = target_headway
+
 		self.vehicle = vehicle
 
 		'''
@@ -61,9 +72,9 @@ class StopAndGo(gym.Env):
 			 |  -1 <= j < 0    j = 0    0 < j <= 1
 		jerk |   decelerate   nothing   accelerate
 			 |    (brake)    (nothing)    (gas)
-		The interval [-1, 1] is divided into 21 intervals:	[-1, -0.90), ... [-0.20, 0), [0.10, 0), [0], (0, 0.10], (0.10, 0.20], ... (0.90, 1]
-			interval compressed to a single value:			[-1],        ... [-0.20],    [-0.10],   [0],    [0.10],       [0.20], ...       [1]
-			discrete value in action_space:					0,           ... 8,          9,         10,     11,           12,     ...       20
+		The interval [-1, 1] is divided into 21 intervals:	[-1, -0.90), ... [-0.20, 0), [-0.10, 0), [0], (0, 0.10], (0.10, 0.20], ... (0.90, 1]
+			interval compressed to a single value:			[-1],        ... [-0.20],    [-0.10],    [0],    [0.10],       [0.20], ...       [1]
+			discrete value in action_space:					0,           ... 8,          9,          10,     11,           12,     ...       20
 		'''
 		self.action_space = spaces.Discrete(21) # jerk is a percentage interval from -1 to 1 (where 0 is no jerk)
 		self.observation_space = spaces.Box(low, high, dtype=np.float32)
@@ -75,14 +86,11 @@ class StopAndGo(gym.Env):
 		
 
 		#Environment Variables
-		assert target_headway > 0, "target_headway is not positive"
-		self.target_headway = target_headway
-
 		self.headway_lower_bound = 0
 		self.headway_upper_bound = 100 #MUST CHANGE!!!!!!! (in terms of target_headway)
 
 		self.headway = self.target_headway
-		self.delta_headway = self.target_headway
+		self.delta_headway = 0
 
 		self.num_steps = 0
 
@@ -102,19 +110,15 @@ class StopAndGo(gym.Env):
 		return
 
 
+	
 
-
-
-	def seed(self, seed=None):
-		self.np_random, seed = seeding.np_random(seed)
-		return [seed]
-		
-
-
+	"""
+	StopAndGo: step
+	
+	"""
 	def	step(self, action):
 		assert self.action_space.contains(action), "%r (%s) invalid"%(action, type(action))
-		print('action = ', action)
-
+		
 		state = self.state
 		curr_hw, curr_dhw, curr_f_acc, curr_r_vel, curr_r_acc = state
 
@@ -153,15 +157,19 @@ class StopAndGo(gym.Env):
 		if not done:
 			reward = 1.0
 		else:
-			logger.warn("You called 'step()' after simulation was complete")
+			logger.warn(" You called 'step()' after simulation was complete")
 			reward = 0.0
 		
 
 		return np.array(self.state), reward, done, {}
-		
 
 
 
+
+	"""
+	StopAndGo: reset
+	
+	"""
 	def reset(self, vehicle = None, target_headway = None):
 
 		#Environment Variables
@@ -174,7 +182,7 @@ class StopAndGo(gym.Env):
 			self.target_headway = target_headway
 
 		self.headway = self.target_headway
-		self.delta_headway = self.target_headway
+		self.delta_headway = 0
 
 		self.num_steps = 0
 
@@ -193,8 +201,26 @@ class StopAndGo(gym.Env):
 		#state
 		self.state = (self.headway, self.delta_headway, self.f_acc, self.r_vel, self.r_acc)
 
-		print('environment reset')
+		#print('environment reset')
 		return np.array(self.state)
+
+
+
+
+
+
+	def variablesKinematicsFrontVehicle(self):
+		return [self.f_pos, self.f_vel, self.f_acc, self.f_jer]
+
+	def variablesKinematicsRearVehicle(self):
+		return [self.r_pos, self.r_vel, self.r_acc, self.r_jer]
+
+	def variablesEnvironment(self):
+		return [self.headway, self.delta_headway]
+
+	def seed(self, seed=None):
+		self.np_random, seed = seeding.np_random(seed)
+		return [seed]
 
 
 	#def render(self, mode='human', close=False):

@@ -38,8 +38,9 @@ VEHICLE = Vehicle(statistics = VEHICLE_STATISTICS)
 
 #environment parameters
 TARGET_HEADWAY = 2
-#TIME_LIMIT = 15 #seconds
+STEP_LIMIT = 500 #steps
 
+print('starting main code')
 
 if __name__ == '__main__':
 	#create environment and agent
@@ -49,10 +50,14 @@ if __name__ == '__main__':
 
 	#setting environment variables and agent hyperparameters
 	env.reset(VEHICLE, TARGET_HEADWAY)
-	agent = DQNAgent(state_size, action_size, GAMMA, EPSILON, EPSILON_MIN, EPSILON_DECAY, LEARNING_RATE, MEMORY_SIZE)
 	
+	agent = DQNAgent(state_size, action_size, GAMMA, EPSILON, EPSILON_MIN, EPSILON_DECAY, LEARNING_RATE, MEMORY_SIZE)
+
 	# agent.load("./save/cartpole-ddqn.h5")
 	done = False
+
+	print('begin training')
+	print('-------------------------------')
 
 	for e in range(EPISODES):
 		#reset environment and get initial state
@@ -60,7 +65,13 @@ if __name__ == '__main__':
 		state = np.reshape(state, [1, state_size])
 		episode_reward = 0
 
-		for time in range(500):
+		for time in range(STEP_LIMIT):
+			if time % 15 == 0:
+				print('current env: front vehicle :', env.variablesKinematicsFrontVehicle(), '[',time,']')
+				print('             rear  vehicle :', env.variablesKinematicsRearVehicle())
+				print('             other vars    :', env.variablesEnvironment())
+				print('             EPISODE_REWARD:', episode_reward)
+
 			#agent acts on environment's current state
 			action = agent.act(state)
 			next_state, reward, done, _ = env.step(action)
@@ -75,12 +86,13 @@ if __name__ == '__main__':
 
 			if done:
 				agent.update_target_model()
-				print("episode: {}/{}, score: {}, e: {:.2}"
+				print('episode: {}/{}, score: {}, e: {:.2}'
 					  .format(e, EPISODES, episode_reward, agent.epsilon))
 				break
 
 			if len(agent.memory) > BATCH_SIZE:
 				agent.replay(BATCH_SIZE)
+
 
 		#if e % 10 == 0:
 		#	agent.save("./save/cartpole-ddqn.h5")
