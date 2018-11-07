@@ -23,11 +23,14 @@ class Adversary(gym.Env):
 	Adversary: __init__
 	
 	"""
-	def __init__(self, vehicle = Vehicle(), target_headway = 2):
+	def __init__(self, vehicle = Vehicle(), target_headway = 2, init_velocity = 25):
 		
 		#custom variables
 		assert target_headway > 0, "target_headway is not positive"
 		self.target_headway = target_headway
+
+		assert init_velocity > 0, "init_velocity is not positive"
+		self.init_velocity = init_velocity
 
 		self.vehicle = vehicle
 
@@ -96,17 +99,31 @@ class Adversary(gym.Env):
 		self.num_steps = 0
 
 		#Front vehicle kinematics
-		self.f_pos = self.target_headway + self.vehicle.length
-		self.f_vel = 0
+		self.f_pos = self.target_headway * self.init_velocity + self.vehicle.length
+		self.f_vel = self.init_velocity
 		self.f_acc = 0
 		self.f_jer = 0
 		
 		#Rear vehicle kinematics
 		self.r_pos = 0
-		self.r_vel = 0
+		self.r_vel = self.init_velocity
 		self.r_acc = 0
 		self.r_jer = 0
+
+
+		self.reward_total_front = 0
+		self.reward_total_rear  = 0
+
+		self.history_hw  = []
+		self.history_dhw = []
+
+		self.avg_hw  = 0
+		self.avg_dhw = 0
+
+		self.std_hw  = 0
+		self.std_dhw = 0
 		
+
 		print('environment created')
 		return
 
@@ -131,18 +148,21 @@ class Adversary(gym.Env):
 
 		#update front vehicle
 		self.f_jer = (action_front - 10) / 10 * self.vehicle.top_jerk
-		self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration,	self.f_jer + self.f_acc))
-		self.f_vel = max(0,								 min(self.vehicle.top_velocity,		self.f_acc + self.f_vel))
-		self.f_pos = self.f_vel + self.f_pos
+		self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration,	self.f_jer / self.metadata['video.frames_per_second'] + self.f_acc))
+		self.f_vel = max(0,								 min(self.vehicle.top_velocity,		self.f_acc / self.metadata['video.frames_per_second'] + self.f_vel))
+		self.f_pos = self.f_vel / self.metadata['video.frames_per_second'] + self.f_pos
+
+
 		
 		#update rear vehicle
 		self.r_jer = (action_rear - 10) / 10 * self.vehicle.top_jerk
-		self.r_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration,	self.r_jer + self.r_acc))
-		self.r_vel = max(0,								 min(self.vehicle.top_velocity,		self.r_acc + self.r_vel))
-		self.r_pos = self.r_vel + self.r_pos
+		self.r_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration,	self.r_jer / self.metadata['video.frames_per_second'] + self.r_acc))
+		self.r_vel = max(0,								 min(self.vehicle.top_velocity,		self.r_acc / self.metadata['video.frames_per_second'] + self.r_vel))
+		self.r_pos = self.r_vel / self.metadata['video.frames_per_second'] + self.r_pos
 		
 
 		#update other environment variables
+		#self.headway = max(self.headway_lower_bound, np.inf if self.r_vel == 0 else (self.f_pos - self.vehicle.length - self.r_pos) / self.r_vel)
 		self.headway = np.inf if self.r_vel == 0 else (self.f_pos - self.vehicle.length - self.r_pos) / self.r_vel
 		self.delta_headway = self.headway - curr_hw
 
@@ -153,57 +173,144 @@ class Adversary(gym.Env):
 		self.state = (state_front, state_rear)
 		
 		self.num_steps += 1
+
+
+		self.history_hw.append(self.headway)
+		self.history_dhw.append(self.delta_headway)
+
+		def calcAvg(x):
+			return sum(x) / len(x)
+
+		def calcStdDev(x, m):
+			c = 0
+			for i in x:
+				c += (i - m) ** 2
+
+			return math.sqrt(c / len(x))
+
+
+		self.avg_hw  = calcAvg(self.history_hw)
+		self.avg_dhw = calcAvg(self.history_dhw)
+
+		self.std_hw  = calcStdDev(self.history_hw,  self.avg_hw)
+		self.std_dhw = calcStdDev(self.history_dhw, self.avg_hw)
+
 		
 		#decide if simulation is complete
 		#done = too close (i.e. crash) OR too far
-		done = self.headway <= self.headway_lower_bound or \
-			   self.headway >= self.headway_upper_bound 
+		#done = self.headway <= self.headway_lower_bound or \
+		#	   self.headway >= self.headway_upper_bound 
+		
+		done = self.f_pos - self.r_pos <= 0 or \
+			   self.f_pos - self.r_pos > self.headway_upper_bound * self.vehicle.top_velocity
+		
 		done = bool(done)
 
 		def checkBounds(x, low, high):
 			return low <= x and x <= high
 		
-		#reward
+
+
+		t_hw = self.target_headway
+
+
 		if not done:
-			#independent of delat_headway
-			if checkBounds(self.headway, self.target_headway - 0.10, self.target_headway + 0.10):
-				reward_rear = 50 #goal range small
+			if checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)        and checkBounds(self.std_hw, 0, 0.50):
 				reward_front = -50
-			elif checkBounds(self.headway, self.target_headway + 0.10, self.target_headway + 0.25):
-				reward_rear = 5  #goal range large (far)
+				reward_rear  = 50
+			elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 0, 0.50):
+				reward_front = -10
+				reward_rear  = 10
+			elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 3.00)   and checkBounds(self.std_hw, 0, 0.50):
 				reward_front = -5
-			elif checkBounds(self.headway, self.target_headway - 0.25, self.target_headway - 0.10):
-				reward_rear = 5  #goal range large (close)
-				reward_front = -5
-
-			#dependent of delta_headway and too close
-			elif checkBounds(self.headway, self.target_headway - 1.50, self.target_headway - 0.25) and self.delta_headway <= 0: #checkBounds(self.delta_headway, -0.10, 0):
-				reward_rear = -5 #too close
-				reward_front = 5
-			elif checkBounds(self.headway, self.target_headway - 1.50, self.target_headway - 0.25) and self.delta_headway > 0: #checkBounds(self.delta_headway, 0, 0.10):
-				reward_rear = 1  #falling behind from being too close
-				reward_front = -1
-			elif checkBounds(self.headway, 0, self.target_headway - 1.50):
-				reward_rear = -100 #crash
-				reward_front = 100
-
-			#dependent of delta_headway and too far
-			elif checkBounds(self.headway, self.target_headway + 0.25, self.target_headway + 8.00) and self.delta_headway <= 0: #checkBounds(self.delta_headway, -0.10, 0):
-				reward_rear = 1  #closing in from being too far
-				reward_front = -1
-			elif checkBounds(self.headway, self.target_headway + 0.25, self.target_headway + 8.00) and self.delta_headway > 0: #checkBounds(self.delta_headway, 0, 0.10):
-				reward_rear = -1 #too far (and getting farther away)
-				reward_front = 1
-			elif checkBounds(self.headway, self.target_headway + 8.00, self.headway_upper_bound) and self.delta_headway <= 0: #checkBounds(self.delta_headway, -0.10, 0):
-				reward_rear = 0.5 #closing in from being too far (even farther away)
-				reward_front = 0.5
-			elif checkBounds(self.headway, self.target_headway + 8.00, self.headway_upper_bound) and self.delta_headway > 0: #checkBounds(self.delta_headway, 0, 0.10):
-				reward_rear = -50 #way too far
+				reward_rear  = 5
+			elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 0, 0.50):
 				reward_front = 50
-			
+				reward_rear  = -50
+			elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 0.50, 1.25):
+				reward_front = -50
+				reward_rear  = 50
+			elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 0.50, 1.25):
+				reward_front = -10
+				reward_rear  = 10
+			elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 3.00)   and checkBounds(self.std_hw, 0.50, 1.25):
+				reward_front = -5
+				reward_rear  = 5
+			elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 0.50, 1.25):
+				reward_front = 50
+				reward_rear  = -50
+			elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 1.25, 3.00):
+				reward_front = -50
+				reward_rear  = 50
+			elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 1.25, 3.00):
+				reward_front = -10
+				reward_rear  = 10
+			elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 3.00)   and checkBounds(self.std_hw, 1.25, 3.00):
+				reward_front = -5
+				reward_rear  = 5
+			elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 1.25, 3.00):
+				reward_front = 50
+				reward_rear  = -50
+			elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 3.00, np.inf):
+				reward_front = -50
+				reward_rear  = 50
+			elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 3.00, np.inf):
+				reward_front = -10
+				reward_rear  = 10
+			elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 3.00)   and checkBounds(self.std_hw, 3.00, np.inf):
+				reward_front = -5
+				reward_rear  = 5
+			elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 3.00, np.inf):
+				reward_front = 50
+				reward_rear  = -50
 		else:
 			reward_rear = -100
 			reward_front = 100
+
+
+		
+		##reward
+		#if not done:
+		#	#independent of delat_headway
+		#	if checkBounds(self.headway, self.target_headway - 0.10, self.target_headway + 0.10):
+		#		reward_rear = 50 #goal range small
+		#		reward_front = -50
+		#	elif checkBounds(self.headway, self.target_headway + 0.10, self.target_headway + 0.25):
+		#		reward_rear = 5  #goal range large (far)
+		#		reward_front = -5
+		#	elif checkBounds(self.headway, self.target_headway - 0.25, self.target_headway - 0.10):
+		#		reward_rear = 5  #goal range large (close)
+		#		reward_front = -5
+
+		#	#dependent of delta_headway and too close
+		#	elif checkBounds(self.headway, self.target_headway - 1.50, self.target_headway - 0.25) and self.delta_headway <= 0: #checkBounds(self.delta_headway, -0.10, 0):
+		#		reward_rear = -5 #too close
+		#		reward_front = 5
+		#	elif checkBounds(self.headway, self.target_headway - 1.50, self.target_headway - 0.25) and self.delta_headway > 0: #checkBounds(self.delta_headway, 0, 0.10):
+		#		reward_rear = 1  #falling behind from being too close
+		#		reward_front = -1
+		#	elif checkBounds(self.headway, 0, self.target_headway - 1.50):
+		#		reward_rear = -100 #crash
+		#		reward_front = 100
+
+		#	#dependent of delta_headway and too far
+		#	elif checkBounds(self.headway, self.target_headway + 0.25, self.target_headway + 8.00) and self.delta_headway <= 0: #checkBounds(self.delta_headway, -0.10, 0):
+		#		reward_rear = 1  #closing in from being too far
+		#		reward_front = -1
+		#	elif checkBounds(self.headway, self.target_headway + 0.25, self.target_headway + 8.00) and self.delta_headway > 0: #checkBounds(self.delta_headway, 0, 0.10):
+		#		reward_rear = -1 #too far (and getting farther away)
+		#		reward_front = 1
+		#	elif checkBounds(self.headway, self.target_headway + 8.00, self.headway_upper_bound) and self.delta_headway <= 0: #checkBounds(self.delta_headway, -0.10, 0):
+		#		reward_rear = 0.5 #closing in from being too far (even farther away)
+		#		reward_front = -0.5 #0.5
+		#	elif checkBounds(self.headway, self.target_headway + 8.00, self.headway_upper_bound) and self.delta_headway > 0: #checkBounds(self.delta_headway, 0, 0.10):
+		#		reward_rear = -50 #way too far
+		#		reward_front = 50
+			
+		#else:
+		#	reward_rear = -100
+		#	reward_front = 100
+		
 		
 		#reward 
 		#MUST UPDATE WITH MORE DETAIL!!!
@@ -243,16 +350,24 @@ class Adversary(gym.Env):
 		self.num_steps = 0
 
 		#Front vehicle kinematics
-		self.f_pos = self.target_headway + self.vehicle.length
-		self.f_vel = 0
+		self.f_pos = self.target_headway * self.init_velocity + self.vehicle.length
+		self.f_vel = self.init_velocity
 		self.f_acc = 0
 		self.f_jer = 0
 		
 		#Rear vehicle kinematics
 		self.r_pos = 0
-		self.r_vel = 0
+		self.r_vel = self.init_velocity
 		self.r_acc = 0
 		self.r_jer = 0
+
+		self.reward_total_front = 0
+		self.reward_total_rear  = 0
+
+		self.history_hw  = []
+		self.history_dhw = []
+
+
 		
 		#state
 		state_front = (self.headway, self.delta_headway, self.r_acc, self.f_pos, self.f_vel, self.f_acc)
@@ -275,7 +390,7 @@ class Adversary(gym.Env):
 		return [round(self.r_pos, 4), round(self.r_vel, 4), round(self.r_acc, 4), round(self.r_jer, 4)]
 
 	def variablesEnvironment(self):
-		return [round(self.headway, 4), round(self.delta_headway, 4)]
+		return [[round(self.headway, 4), round(self.delta_headway, 4)], [round(self.avg_hw, 4), round(self.avg_dhw, 4)], [round(self.std_hw, 4), round(self.std_dhw, 4)]]
 
 	def seed(self, seed=None):
 		self.np_random, seed = seeding.np_random(seed)

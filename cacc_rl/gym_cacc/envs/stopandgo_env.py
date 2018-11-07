@@ -128,7 +128,6 @@ class StopAndGo(gym.Env):
 		self.f_acc = min(self.vehicle.top_acceleration, self.f_jer + self.f_acc)
 		self.f_vel = min(self.vehicle.top_velocity, self.f_acc + self.f_vel)
 		self.f_pos = self.f_vel + self.f_pos
-		
 
 		#update rear vehicle
 		#self.r_jer = min(self.vehicle.top_jerk, action[0])

@@ -1,4 +1,5 @@
 
+
 from random import seed
 from random import randint
 import numpy as np
@@ -22,7 +23,7 @@ from models.dqn_model1 import DQNAgent
 
 
 #hyper parameters
-EPISODES	= 10
+EPISODES	= 10000
 STEP_LIMIT  = 500 #steps
 BATCH_SIZE	= 32
 
@@ -54,13 +55,8 @@ REACTION_TIME_LOWER_BOUND = 10 #frames (steps)
 REACTION_TIME_UPPER_BOUND = 15 #frames (steps)
 
 
-#names
-VERSION = '1.0'
-WEIGHT_NAME = 'cacc_rl_adversary_'+VERSION
 
-
-
-print('starting main code')
+#print('starting main code')
 
 if __name__ == '__main__':
 	#create environment and agent
@@ -81,8 +77,8 @@ if __name__ == '__main__':
 	environment_state_memory = []
 
 
-	print('begin training')
-	print('-------------------------------')
+	#print('begin training')
+	#print('-------------------------------')
 
 	for e in range(EPISODES):
 
@@ -114,14 +110,12 @@ if __name__ == '__main__':
 												[episode_reward_front, episode_reward_rear]))
 
 			#if time % 10 == 0:
-			if True:
-				print('-----------')
-				#vehicles: (pos, vel, acc, jer)
-				#other vars: (headway, delta_headway)
-				print('current env: front vehicle :', env.variablesKinematicsFrontVehicle(), '[',time + 1, '/', e + 1,']')
-				print('             rear  vehicle :', env.variablesKinematicsRearVehicle())
-				print('             other vars    :', env.variablesEnvironment())
-				print('             EPISODE_REWARD: (' + str(episode_reward_front) +' ' + str(episode_reward_rear) + ')')
+			#if True:
+				#print('-----------')
+				#print('current env: front vehicle :', env.variablesKinematicsFrontVehicle(), '[',time + 1, '/', e + 1,']')
+				#print('             rear  vehicle :', env.variablesKinematicsRearVehicle())
+				#print('             other vars    :', env.variablesEnvironment())
+				#print('             EPISODE_REWARD: (' + str(episode_reward_front) +' ' + str(episode_reward_rear) + ')')
 
 			#agents act on environment's current state
 			#front agent
@@ -169,11 +163,11 @@ if __name__ == '__main__':
 			if done:
 				agent_front.update_target_model()
 				agent_rear.update_target_model()
-				print('-----------')
-				print('episode: {0:3d}/{1:3d} :: FRONT: score: {2}, e: {3:.2}'
-					  .format(e, EPISODES, episode_reward_front, agent_front.epsilon))
-				print('                 :: REAR:  score: {0}, e: {1:.2}'
-					  .format(episode_reward_rear, agent_rear.epsilon))
+				#print('-----------')
+				#print('episode: {0:3d}/{1:3d} :: FRONT: score: {2}, e: {3:.2}'
+				#	  .format(e, EPISODES, episode_reward_front, agent_front.epsilon))
+				#print('                 :: REAR:  score: {0}, e: {1:.2}'
+				#	  .format(episode_reward_rear, agent_rear.epsilon))
 				break
 
 			if len(agent_front.memory) > BATCH_SIZE:
@@ -185,8 +179,8 @@ if __name__ == '__main__':
 
 		#saving agents
 		if e % 10 == 0:
-			agent_front.save(WEIGHT_NAME+'_front_'+str(e)+'.h5')
-			agent_rear.save(WEIGHT_NAME+'_rear_'+str(e)+'.h5')
+			agent_front.save('cacc_rl_adversary_front_'+str(e)+'.h5')
+			agent_rear.save('cacc_rl_adversary_rear_'+str(e)+'.h5')
 
 		#if e % 10 == 0:
 		#	agent.save("./save/cartpole-ddqn.h5")
@@ -194,12 +188,12 @@ if __name__ == '__main__':
 
 		#print(environment_state_memory[0])
 
-		print('\n---------')
-		print('DONE!!!')
-		print('---------\n')
+		#print('\n---------')
+		#print('DONE!!!')
+		#print('---------\n')
 
 
-		save_to_file = True
+		save_to_file = False
 
 		if save_to_file:
 			print('saving env state memory to file')
