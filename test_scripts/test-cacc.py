@@ -5,7 +5,7 @@ import numpy as np
 import sys
 
 print('adding path')
-sys.path.append('B:\\comp594\\project\\cacc_rl\\cacc_rl\\gym-cacc')
+sys.path.append('E:\\comp594\\project\\cacc_rl\\cacc_rl\\gym-cacc')
 
 print('gym imports')
 import gym

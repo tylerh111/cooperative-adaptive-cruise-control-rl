@@ -6,16 +6,17 @@ from collections import deque
 
 from keras.models import Sequential
 from keras.layers import Dense
+#from keras.activations import sigmoid
 from keras.optimizers import Adam
 from keras import backend as K
 
 import tensorflow as tf
 
 
-PATH_TO_WEIGHTS = 'B:\\comp594\\Cooperative-Adaptive-CC-RL\\cacc_rl\\models\\dqn_model_weights\\'
+#PATH_TO_WEIGHTS = 'E:\\comp594\\Cooperative-Adaptive-CC-RL\\cacc_rl\\models\\dqn_model_weights\\'
 
 class DQNAgent:
-	def __init__(self, state_size, action_size, gamma = 0.95, epsilon = 1.0, epsilon_min = 0.01, epsilon_decay = 0.99, learning_rate = 0.001, memory_size = 2000):
+	def __init__(self, state_size, action_size, weigths_path = None, gamma = 0.95, epsilon = 1.0, epsilon_min = 0.01, epsilon_decay = 0.99, learning_rate = 0.001, memory_size = 2000):
 		self.state_size	 = state_size
 		self.action_size = action_size
 
@@ -28,7 +29,7 @@ class DQNAgent:
 		self.memory = deque(maxlen=memory_size)
 
 		self.model = self._build_model()
-		self.target_model = self._build_model()
+		self.target_model = self._build_model(weigths_path)
 		self.update_target_model()
 
 		return
@@ -54,12 +55,16 @@ class DQNAgent:
 
 
 
-	def _build_model(self):
+	def _build_model(self, weights_path = None):
 		# Neural Net for Deep-Q learning Model
 		model = Sequential()
-		model.add(Dense(24, input_dim=self.state_size, activation='relu'))
-		model.add(Dense(24, activation='relu'))
-		model.add(Dense(self.action_size, activation='linear'))
+		model.add(Dense(128, input_dim=self.state_size, activation=K.sigmoid))
+		model.add(Dense(256, activation=K.sigmoid))
+		model.add(Dense(128, activation=K.sigmoid))
+		model.add(Dense(self.action_size, activation=K.softmax))
+
+		if weights_path is not None:
+			model.load_weights(weights_path)
 
 		model.compile(loss=self._huber_loss,
 					  optimizer=Adam(lr=self.learning_rate))
@@ -90,9 +95,8 @@ class DQNAgent:
 	def act(self, state):
 		if np.random.rand() <= self.epsilon:
 			return random.randrange(self.action_size)
-
+			
 		act_values = self.model.predict(state)
-
 		return np.argmax(act_values[0])  # returns action
 
 
@@ -124,13 +128,11 @@ class DQNAgent:
 
 
 
-	def load(self, name):
-		self.model.load_weights(PATH_TO_WEIGHTS + name)
+	def load(self, path):
+		self.model.load_weights(path)
 
-	def save(self, name):
-		self.model.save_weights(PATH_TO_WEIGHTS + name)
-
-
-
+	def save(self, path):
+		self.model.save_weights(path)
+	
 
 

@@ -10,6 +10,9 @@ from gym.utils import seeding
 from gym_cacc import Vehicle
 
 
+fps = 60
+
+
 class Adversary(gym.Env):
 	
 	metadata = {
@@ -23,7 +26,7 @@ class Adversary(gym.Env):
 	Adversary: __init__
 	
 	"""
-	def __init__(self, vehicle = Vehicle(), target_headway = 2, init_velocity = 25):
+	def __init__(self, vehicle = Vehicle(), target_headway = 2, init_velocity = 25, init_acceleration = 1):
 		
 		#custom variables
 		assert target_headway > 0, "target_headway is not positive"
@@ -47,7 +50,6 @@ class Adversary(gym.Env):
 			-np.inf,					#headway
 			-np.inf,					#delta headway
 			-self.vehicle.top_acceleration,	#f_acc
-			0,								#r_pos
 			0,								#r_vel
 			-self.vehicle.top_acceleration,	#r_acc
 		])
@@ -56,7 +58,6 @@ class Adversary(gym.Env):
 			np.inf,						#headway
 			np.inf,						#delta headway
 			self.vehicle.top_acceleration,	#f_acc
-			np.inf,							#r_pos
 			self.vehicle.top_velocity,		#r_vel
 			self.vehicle.top_acceleration,	#r_acc
 		])
@@ -99,14 +100,14 @@ class Adversary(gym.Env):
 		self.num_steps = 0
 
 		#Front vehicle kinematics
-		self.f_pos = self.target_headway * self.init_velocity + self.vehicle.length
-		self.f_vel = self.init_velocity
+		self.f_pos = 0
+		self.f_vel = 0
 		self.f_acc = 0
 		self.f_jer = 0
 		
 		#Rear vehicle kinematics
 		self.r_pos = 0
-		self.r_vel = self.init_velocity
+		self.r_vel = 0
 		self.r_acc = 0
 		self.r_jer = 0
 
@@ -129,6 +130,107 @@ class Adversary(gym.Env):
 
 
 	
+	"""
+	Adversary: reward function
+	
+	"""
+	def _reward_function(self, t_hw, avg_hw, std_hw):
+
+		def checkBounds(x, low, high):
+			return low <= x and x <= high
+
+		if self.avg_hw == np.inf or self.std_hw == np.inf:
+			reward = -100
+			bound  = 'inf'
+		#---------------------------------------------------------------------------------------------------
+		elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 0, 0.50):
+			reward = 50
+			bound  = 'AV'
+		elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 0, 0.50):
+			reward = 5
+			bound  = 'BV'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 1.50)   and checkBounds(self.std_hw, 0, 0.50):
+			reward = 1
+			bound  = 'CV'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.50, 3.00)   and checkBounds(self.std_hw, 0, 0.50):
+			reward = -5
+			bound  = 'DV'
+		elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 0, 0.50):
+			reward = -50
+			bound  = 'EV'
+		#---------------------------------------------------------------------------------------------------
+		elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 0.50, 1.25):
+			reward = 5
+			bound  = 'AW'
+		elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 0.50, 1.25):
+			reward = 1
+			bound  = 'BW'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 1.50)   and checkBounds(self.std_hw, 0.50, 1.25):
+			reward = 1
+			bound  = 'CW'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.50, 3.00)   and checkBounds(self.std_hw, 0.50, 1.25):
+			reward = -5
+			bound  = 'DW'
+		elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 0.50, 1.25):
+			reward = -50
+			bound  = 'EW'
+		#---------------------------------------------------------------------------------------------------
+		elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 1.25, 1.50):
+			reward = 1
+			bound  = 'AX'
+		elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 1.25, 1.50):
+			reward = 1
+			bound  = 'BX'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 1.50)   and checkBounds(self.std_hw, 1.25, 1.50):
+			reward = -1
+			bound  = 'CX'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.50, 3.00)   and checkBounds(self.std_hw, 1.25, 1.50):
+			reward = -5
+			bound  = 'DX'
+		elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 1.25, 1.50):
+			reward = -50
+			bound  = 'EX'
+		#---------------------------------------------------------------------------------------------------
+		elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 1.50, 3.00):
+			reward = -5
+			bound  = 'AY'
+		elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 1.50, 3.00):
+			reward = -5
+			bound  = 'BY'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 1.50)   and checkBounds(self.std_hw, 1.50, 3.00):
+			reward = -5
+			bound  = 'CY'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.50, 3.00)   and checkBounds(self.std_hw, 1.50, 3.00):
+			reward = -10
+			bound  = 'DY'
+		elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 1.50, 3.00):
+			reward = -55
+			bound  = 'EY'
+		#---------------------------------------------------------------------------------------------------
+		elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 3.00, np.inf):
+			reward = -10
+			bound  = 'AZ'
+		elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 3.00, np.inf):
+			reward = -10
+			bound  = 'BZ'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 1.50)   and checkBounds(self.std_hw, 3.00, np.inf):
+			reward = -10
+			bound  = 'CZ'
+		elif checkBounds(abs(self.avg_hw - t_hw), 1.50, 3.00)   and checkBounds(self.std_hw, 3.00, np.inf):
+			reward = -20
+			bound  = 'DZ'
+		elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 3.00, np.inf):
+			reward = -100
+			bound  = 'EZ'
+
+		return (reward, bound)
+
+
+
+	def test(x):
+		return x+1
+
+
 
 	"""
 	Adversary: step
@@ -143,22 +245,23 @@ class Adversary(gym.Env):
 		state = self.state
 		curr_state_front, curr_state_rear = state
 
-		curr_hw, curr_dhw, curr_r_acc, curr_f_pos, curr_f_vel, curr_f_acc = curr_state_front
-		curr_hw, curr_dhw, curr_f_acc, curr_r_pos, curr_r_vel, curr_r_acc = curr_state_rear
+		curr_hw, curr_dhw, curr_r_acc, curr_f_vel, curr_f_acc = curr_state_front
+		curr_hw, curr_dhw, curr_f_acc, curr_r_vel, curr_r_acc = curr_state_rear
 
 		#update front vehicle
 		self.f_jer = (action_front - 10) / 10 * self.vehicle.top_jerk
-		self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration,	self.f_jer / self.metadata['video.frames_per_second'] + self.f_acc))
-		self.f_vel = max(0,								 min(self.vehicle.top_velocity,		self.f_acc / self.metadata['video.frames_per_second'] + self.f_vel))
-		self.f_pos = self.f_vel / self.metadata['video.frames_per_second'] + self.f_pos
-
+		self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration,	self.f_jer / fps + self.f_acc))
+		#self.f_acc = (action_rear - 10) / 10 * self.vehicle.top_acceleration
+		self.f_vel = max(0, min(self.vehicle.top_velocity, self.f_acc / fps + self.f_vel))
+		self.f_pos = self.f_vel / fps + self.f_pos
 
 		
 		#update rear vehicle
 		self.r_jer = (action_rear - 10) / 10 * self.vehicle.top_jerk
-		self.r_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration,	self.r_jer / self.metadata['video.frames_per_second'] + self.r_acc))
-		self.r_vel = max(0,								 min(self.vehicle.top_velocity,		self.r_acc / self.metadata['video.frames_per_second'] + self.r_vel))
-		self.r_pos = self.r_vel / self.metadata['video.frames_per_second'] + self.r_pos
+		self.r_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration,	self.r_jer / fps + self.r_acc))
+		#self.r_acc = (action_rear - 10) / 10 * self.vehicle.top_acceleration
+		self.r_vel = max(0,	min(self.vehicle.top_velocity, self.r_acc / fps + self.r_vel))
+		self.r_pos = self.r_vel / fps + self.r_pos
 		
 
 		#update other environment variables
@@ -167,8 +270,8 @@ class Adversary(gym.Env):
 		self.delta_headway = self.headway - curr_hw
 
 		#update state
-		state_front = (self.headway, self.delta_headway, self.r_acc, self.f_pos, self.f_vel, self.f_acc)
-		state_rear  = (self.headway, self.delta_headway, self.f_acc, self.r_pos, self.r_vel, self.r_acc)
+		state_front = (self.headway, self.delta_headway, self.r_acc, self.f_vel, self.f_acc)
+		state_rear  = (self.headway, self.delta_headway, self.f_acc, self.r_vel, self.r_acc)
 
 		self.state = (state_front, state_rear)
 		
@@ -179,21 +282,17 @@ class Adversary(gym.Env):
 		self.history_dhw.append(self.delta_headway)
 
 		def calcAvg(x):
-			return sum(x) / len(x)
+			return np.mean(x)
 
-		def calcStdDev(x, m):
-			c = 0
-			for i in x:
-				c += (i - m) ** 2
-
-			return math.sqrt(c / len(x))
+		def calcStdDev(x):
+			return np.std(x)
 
 
 		self.avg_hw  = calcAvg(self.history_hw)
 		self.avg_dhw = calcAvg(self.history_dhw)
 
-		self.std_hw  = calcStdDev(self.history_hw,  self.avg_hw)
-		self.std_dhw = calcStdDev(self.history_dhw, self.avg_hw)
+		self.std_hw  = calcStdDev(self.history_hw)
+		self.std_dhw = calcStdDev(self.history_dhw)
 
 		
 		#decide if simulation is complete
@@ -206,66 +305,11 @@ class Adversary(gym.Env):
 		
 		done = bool(done)
 
-		def checkBounds(x, low, high):
-			return low <= x and x <= high
-		
-
-
-		t_hw = self.target_headway
-
-
 		if not done:
-			if checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)        and checkBounds(self.std_hw, 0, 0.50):
-				reward_front = -50
-				reward_rear  = 50
-			elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 0, 0.50):
-				reward_front = -10
-				reward_rear  = 10
-			elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 3.00)   and checkBounds(self.std_hw, 0, 0.50):
-				reward_front = -5
-				reward_rear  = 5
-			elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 0, 0.50):
-				reward_front = 50
-				reward_rear  = -50
-			elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 0.50, 1.25):
-				reward_front = -50
-				reward_rear  = 50
-			elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 0.50, 1.25):
-				reward_front = -10
-				reward_rear  = 10
-			elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 3.00)   and checkBounds(self.std_hw, 0.50, 1.25):
-				reward_front = -5
-				reward_rear  = 5
-			elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 0.50, 1.25):
-				reward_front = 50
-				reward_rear  = -50
-			elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 1.25, 3.00):
-				reward_front = -50
-				reward_rear  = 50
-			elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 1.25, 3.00):
-				reward_front = -10
-				reward_rear  = 10
-			elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 3.00)   and checkBounds(self.std_hw, 1.25, 3.00):
-				reward_front = -5
-				reward_rear  = 5
-			elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 1.25, 3.00):
-				reward_front = 50
-				reward_rear  = -50
-			elif checkBounds(abs(self.avg_hw - t_hw), 0, 0.50)      and checkBounds(self.std_hw, 3.00, np.inf):
-				reward_front = -50
-				reward_rear  = 50
-			elif checkBounds(abs(self.avg_hw - t_hw), 0.50, 1.25)   and checkBounds(self.std_hw, 3.00, np.inf):
-				reward_front = -10
-				reward_rear  = 10
-			elif checkBounds(abs(self.avg_hw - t_hw), 1.25, 3.00)   and checkBounds(self.std_hw, 3.00, np.inf):
-				reward_front = -5
-				reward_rear  = 5
-			elif checkBounds(abs(self.avg_hw - t_hw), 3.00, np.inf) and checkBounds(self.std_hw, 3.00, np.inf):
-				reward_front = 50
-				reward_rear  = -50
+			reward, bound = self._reward_function(self.target_headway, self.avg_hw, self.std_hw)
 		else:
-			reward_rear = -100
-			reward_front = 100
+			reward = -1500
+			bound  = 'DONE'
 
 
 		
@@ -323,8 +367,9 @@ class Adversary(gym.Env):
 		#	reward_rear  = -1.0
 
 		return  (np.array(state_front), np.array(state_rear)), \
-				(reward_front, reward_rear), \
-				done, {}
+				(-reward, reward), \
+				done, \
+				{'bound':bound}
 
 
 
@@ -333,7 +378,7 @@ class Adversary(gym.Env):
 	Adversary: reset
 	
 	"""
-	def reset(self, vehicle = None, target_headway = None):
+	def reset(self, vehicle = None, target_headway = None, init_velocity = 25, init_acceleration = 1):
 
 		#Environment Variables
 		if vehicle != None:
@@ -344,22 +389,50 @@ class Adversary(gym.Env):
 			assert target_headway > 0, "target_headway is not positive"
 			self.target_headway = target_headway
 
+		if init_velocity != None:
+			assert init_velocity >= 0, "init_velocity is negitive"
+			assert init_velocity <= self.vehicle.top_velocity, "init_velocity is higher than top_velocity"
+			self.init_velocity = init_velocity
+
+		if init_acceleration != None:
+			assert init_acceleration >= -self.vehicle.top_acceleration, "init_acceleration is lower than top_acceleration"
+			assert init_acceleration <=  self.vehicle.top_acceleration, "init_acceleration is higher than top_acceleration"
+			self.init_acceleration = init_acceleration
+
 		self.headway = self.target_headway
 		self.delta_headway = 0
 
 		self.num_steps = 0
 
+		
+		##Front vehicle kinematics
+		#self.f_pos = self.target_headway * self.init_velocity + self.vehicle.length
+		#self.f_vel = self.init_velocity
+		#self.f_acc = self.init_acceleration
+		#self.f_jer = 0
+		
+		##Rear vehicle kinematics
+		#self.r_pos = 0
+		#self.r_vel = self.init_velocity
+		#self.r_acc = self.init_acceleration
+		#self.r_jer = 0
+
+
 		#Front vehicle kinematics
-		self.f_pos = self.target_headway * self.init_velocity + self.vehicle.length
-		self.f_vel = self.init_velocity
-		self.f_acc = 0
+		self.f_pos = random.uniform(self.target_headway, self.target_headway + 5) * self.init_velocity + self.vehicle.length
+		self.f_vel = random.gauss(self.init_velocity, 4)
+		#self.f_pos = random.uniform(self.target_headway, self.target_headway + 5) * 25 + self.vehicle.length
+		#self.f_vel = 25
+		self.f_acc = random.gauss(self.init_acceleration, 4)
 		self.f_jer = 0
 		
 		#Rear vehicle kinematics
 		self.r_pos = 0
-		self.r_vel = self.init_velocity
-		self.r_acc = 0
+		self.r_vel = random.gauss(self.init_velocity, 4)
+		self.r_acc = random.gauss(self.init_acceleration, 4)
 		self.r_jer = 0
+
+
 
 		self.reward_total_front = 0
 		self.reward_total_rear  = 0
@@ -370,27 +443,24 @@ class Adversary(gym.Env):
 
 		
 		#state
-		state_front = (self.headway, self.delta_headway, self.r_acc, self.f_pos, self.f_vel, self.f_acc)
-		state_rear  = (self.headway, self.delta_headway, self.f_acc, self.r_pos, self.r_vel, self.r_acc)
+		state_front = (self.headway, self.delta_headway, self.r_acc, self.f_vel, self.f_acc)
+		state_rear  = (self.headway, self.delta_headway, self.f_acc, self.r_vel, self.r_acc)
 
 		self.state = (state_front, state_rear)
 
 		#print('environment reset')
 		return (np.array(state_front), np.array(state_rear))
 
-
-
-
-
+	
 
 	def variablesKinematicsFrontVehicle(self):
-		return [round(self.f_pos, 4), round(self.f_vel, 4), round(self.f_acc, 4), round(self.f_jer, 4)]
+		return [self.f_pos, self.f_vel, self.f_acc, self.f_jer]
 
 	def variablesKinematicsRearVehicle(self):
-		return [round(self.r_pos, 4), round(self.r_vel, 4), round(self.r_acc, 4), round(self.r_jer, 4)]
+		return [self.r_pos, self.r_vel, self.r_acc, self.r_jer]
 
 	def variablesEnvironment(self):
-		return [[round(self.headway, 4), round(self.delta_headway, 4)], [round(self.avg_hw, 4), round(self.avg_dhw, 4)], [round(self.std_hw, 4), round(self.std_dhw, 4)]]
+		return [[self.headway, self.delta_headway], [self.avg_hw, self.avg_dhw], [self.std_hw, self.std_dhw]]
 
 	def seed(self, seed=None):
 		self.np_random, seed = seeding.np_random(seed)

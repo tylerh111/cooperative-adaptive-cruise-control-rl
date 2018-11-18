@@ -25,51 +25,10 @@
     <Compile Include="cacc_rl.py" />
     <Compile Include="cacc_rl_adversary.py" />
     <Compile Include="cacc_rl_adversary_bg.pyw" />
-    <Compile Include="gym-cacc\gym_cacc\envs\cacc_env.py" />
-    <Compile Include="gym-cacc\gym_cacc\envs\__init__.py" />
-    <Compile Include="gym-cacc\gym_cacc\__init__.py" />
-    <Compile Include="gym-cacc\setup.py" />
-    <Compile Include="gym_cacc\envs\adversary_env.py" />
-    <Compile Include="gym_cacc\envs\stopandgo_env.py" />
-    <Compile Include="gym_cacc\envs\__init__.py" />
-    <Compile Include="gym_cacc\vehicle.py" />
-    <Compile Include="gym_cacc\__init__.py" />
     <Compile Include="make_dataframe.py" />
-    <Compile Include="models\dqn_model1.py" />
-    <Compile Include="models\lstm_model1.py" />
-    <Compile Include="models\__init__.py" />
-    <Compile Include="test_scripts\script_keras.py" />
-    <Compile Include="test_scripts\test.py" />
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="gym-cacc\" />
-    <Folder Include="gym-cacc\gym_cacc\" />
-    <Folder Include="gym-cacc\gym_cacc\envs\" />
-    <Folder Include="gym-cacc\gym_cacc\__pycache__\" />
-    <Folder Include="gym_cacc\" />
-    <Folder Include="gym_cacc\envs\" />
-    <Folder Include="gym_cacc\envs\__pycache__\" />
-    <Folder Include="gym_cacc\__pycache__\" />
-    <Folder Include="models\" />
-    <Folder Include="models\dqn_model_weights\" />
-    <Folder Include="models\lstm_model_weigths\" />
-    <Folder Include="models\__pycache__\" />
-    <Folder Include="test_scripts\" />
-    <Folder Include="test_scripts\__pycache__\" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="env_state_mem.txt" />
-    <Content Include="gym-cacc\gym_cacc\__pycache__\__init__.cpython-36.pyc" />
-    <Content Include="gym-cacc\README.md" />
-    <Content Include="gym_cacc\envs\__pycache__\adversary_env.cpython-36.pyc" />
-    <Content Include="gym_cacc\envs\__pycache__\stopandgoenv.cpython-36.pyc" />
-    <Content Include="gym_cacc\envs\__pycache__\stopandgo_env.cpython-36.pyc" />
-    <Content Include="gym_cacc\envs\__pycache__\__init__.cpython-36.pyc" />
-    <Content Include="gym_cacc\__pycache__\vehicle.cpython-36.pyc" />
-    <Content Include="gym_cacc\__pycache__\__init__.cpython-36.pyc" />
-    <Content Include="models\__pycache__\dqn_model1.cpython-36.pyc" />
-    <Content Include="models\__pycache__\__init__.cpython-36.pyc" />
-    <Content Include="test_scripts\__pycache__\keras.cpython-36.pyc" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in

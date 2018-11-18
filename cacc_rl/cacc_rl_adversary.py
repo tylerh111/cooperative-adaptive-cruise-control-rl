@@ -2,7 +2,11 @@
 from random import seed
 from random import randint
 import numpy as np
-import matplotlib.pyplot as plt
+import time
+import threading
+
+import pickle
+
 
 #keras (not needed)
 from keras.models import Sequential
@@ -18,34 +22,34 @@ from gym_cacc import Vehicle
 from gym_cacc.envs import Adversary
 
 #models
-from models.dqn_model1 import DQNAgent
+from models.dqn_model import DQNAgent
 
 
 #hyper parameters
-EPISODES	= 10
-STEP_LIMIT  = 500 #steps
+EPISODES	= 10005
+STEP_LIMIT  = 1024 #steps
 BATCH_SIZE	= 32
-
-#agent parameters
-GAMMA_REAR			= 0.95
-EPSILON_REAR		= 1.0
-EPSILON_MIN_REAR	= 0.01
-EPSILON_DECAY_REAR	= 0.99
-LEARNING_RATE_REAR	= 0.001
-MEMORY_SIZE_REAR	= 2000
 
 #agent parameters
 GAMMA_FRONT			= 0.95
 EPSILON_FRONT		= 1.0
 EPSILON_MIN_FRONT	= 0.01
 EPSILON_DECAY_FRONT	= 0.99
-LEARNING_RATE_FRONT	= 0.001
-MEMORY_SIZE_FRONT	= 2000
+LEARNING_RATE_FRONT	= 0.000001
+MEMORY_SIZE_FRONT	= 16384
+
+#agent parameters
+GAMMA_REAR			= 0.95
+EPSILON_REAR		= 1.0
+EPSILON_MIN_REAR	= 0.01
+EPSILON_DECAY_REAR	= 0.99
+LEARNING_RATE_REAR	= 0.000001
+MEMORY_SIZE_REAR	= 16384
 
 #vehicle parameters
 #stats	:= (length, width, height, weigth, top_vel, top_acc, top_jerk)
 #		:= (m, m, m, kg, m/s, m/s^2, m/s^3)
-VEHICLE_STATISTICS = (4.67312, 1.81102, 1.43002, 1617.51, 69.2912, 5.15815, 1)
+VEHICLE_STATISTICS = (4.67312, 1.81102, 1.43002, 1617.51, 55, 3, 6)
 VEHICLE = Vehicle(statistics = VEHICLE_STATISTICS)
 
 #environment parameters
@@ -55,8 +59,9 @@ REACTION_TIME_UPPER_BOUND = 15 #frames (steps)
 
 
 #names
-VERSION = '1.0'
+VERSION = '1_2'
 WEIGHT_NAME = 'cacc_rl_adversary_'+VERSION
+PATH_TO_WEIGHTS = 'E:\\comp594\\Cooperative-Adaptive-CC-RL\\cacc_rl\\weights\\dqn_model_adversary\\'
 
 
 
@@ -71,15 +76,22 @@ if __name__ == '__main__':
 	#setting environment variables and agent hyperparameters
 	env.reset(VEHICLE, TARGET_HEADWAY)
 	
-	agent_front  = DQNAgent(state_size, action_size, GAMMA_FRONT, EPSILON_FRONT, EPSILON_MIN_FRONT, EPSILON_DECAY_FRONT, LEARNING_RATE_FRONT, MEMORY_SIZE_FRONT)
-	agent_rear   = DQNAgent(state_size, action_size, GAMMA_REAR,  EPSILON_REAR,  EPSILON_MIN_REAR,  EPSILON_DECAY_REAR,  LEARNING_RATE_REAR,  MEMORY_SIZE_REAR)
 
-	# agent.load("./save/cartpole-ddqn.h5")
+	#weights_path_front = PATH_TO_WEIGHTS+'front\\cacc_rl_adversary_1_1_front_50.h5'
+	#weights_path_rear  = PATH_TO_WEIGHTS+'rear\\cacc_rl_adversary_1_1_rear_50.h5'
+	weights_path_front = None
+	weights_path_rear  = None
+
+	agent_front  = DQNAgent(state_size, action_size, weights_path_front, GAMMA_FRONT, EPSILON_FRONT, EPSILON_MIN_FRONT, EPSILON_DECAY_FRONT, LEARNING_RATE_FRONT, MEMORY_SIZE_FRONT)
+	agent_rear   = DQNAgent(state_size, action_size, weights_path_rear,  GAMMA_REAR,  EPSILON_REAR,  EPSILON_MIN_REAR,  EPSILON_DECAY_REAR,  LEARNING_RATE_REAR,  MEMORY_SIZE_REAR)
+
+	print('weights loaded')
+	time.sleep(2)
+	
+
 	done = False
 
-
 	environment_state_memory = []
-
 
 	print('begin training')
 	print('-------------------------------')
@@ -99,6 +111,10 @@ if __name__ == '__main__':
 		episode_reward_front = 0
 		episode_reward_rear  = 0
 
+		action_front = 0
+		action_rear  = 0
+		action = (action_front, action_rear)
+
 		action_delay_front = randint(10, 15)
 		action_delay_rear  = randint(10, 15)
 
@@ -106,23 +122,8 @@ if __name__ == '__main__':
 		action_delay_timer_rear  = action_delay_rear
 
 
-		for time in range(STEP_LIMIT):
-
-			environment_state_memory[e].append((env.variablesKinematicsFrontVehicle(), 
-												env.variablesKinematicsRearVehicle(), 
-												env.variablesEnvironment(), 
-												[episode_reward_front, episode_reward_rear]))
-
-			#if time % 10 == 0:
-			if True:
-				print('-----------')
-				#vehicles: (pos, vel, acc, jer)
-				#other vars: (headway, delta_headway)
-				print('current env: front vehicle :', env.variablesKinematicsFrontVehicle(), '[',time + 1, '/', e + 1,']')
-				print('             rear  vehicle :', env.variablesKinematicsRearVehicle())
-				print('             other vars    :', env.variablesEnvironment())
-				print('             EPISODE_REWARD: (' + str(episode_reward_front) +' ' + str(episode_reward_rear) + ')')
-
+		for t in range(STEP_LIMIT):
+			
 			#agents act on environment's current state
 			#front agent
 			if action_delay_timer_front == action_delay_front:
@@ -141,11 +142,9 @@ if __name__ == '__main__':
 			action_delay_timer_front += 1
 			action_delay_timer_rear  += 1
 
-
 			#environment step
-			next_states, rewards, done, _ = env.step(action)
+			next_states, rewards, done, extra = env.step(action)
 			#next_states, rewards, done, _ = env.step((20,20))
-
 
 			next_state_front, next_state_rear = next_states
 			reward_front, reward_rear = rewards
@@ -155,7 +154,7 @@ if __name__ == '__main__':
 			episode_reward_front += reward_front
 			episode_reward_rear  += reward_rear
 
-			#remember
+			#remembering
 			#front vehicle
 			next_state_front = np.reshape(next_state_front, [1, state_size])
 			agent_front.remember(state_front, action_front, reward_front, next_state_front, done)
@@ -166,47 +165,82 @@ if __name__ == '__main__':
 			agent_rear.remember(state_rear, action_rear, reward_rear, next_state_rear, done)
 			state_rear = next_state_rear
 
-			if done:
+			environment_state_memory[e].append((env.variablesKinematicsFrontVehicle(), 
+												env.variablesKinematicsRearVehicle(), 
+												env.variablesEnvironment(), 
+												((episode_reward_front, episode_reward_rear), (reward_front, reward_rear)),
+												(action_front, action_delay_timer_front-1), (action_rear, action_delay_timer_rear-1)))
+
+
+			if True:
+				print('-----------')
+				#vehicles: (pos, vel, acc, jer)
+				#other vars: (headway, delta_headway)
+				#print('current env: front vehicle :', ['{0:0.4f}'.format(j) for j in env.variablesKinematicsFrontVehicle()], '[', action_front, '(' + str(action_delay_timer_front-1) + '/' + str(action_delay_front) + ')', ']', '[',t + 1, '({0:0.3f} s)'.format((t+1) / 60), '/', e + 1,']')
+				#print('             rear  vehicle :', ['{0:0.4f}'.format(j) for j in env.variablesKinematicsRearVehicle()],  '[', action_rear,  '(' + str(action_delay_timer_rear-1)  + '/' + str(action_delay_rear)  + ')', ']')
+				#print('             other vars    :', [['{0:0.4f}'.format(j) for j in x] for x in env.variablesEnvironment()])
+				#print('             reward        : [ (' + str(episode_reward_front) + ')  (' + str(reward_front) + ') ]  [ (' + str(episode_reward_rear) + ')  (' + str(reward_rear) + ') ]  ('+ str(extra['bound'])+')')
+
+				print('current env: front vehicle :', ['{0:0.4f}'.format(j) for j in env.variablesKinematicsFrontVehicle()], '[', action_front, '(' + str(action_delay_timer_front-1) + '/' + str(action_delay_front) + ')', ']', '[',t + 1, '({0:0.3f} s)'.format((t+1) / 60), '/', e + 1,']', \
+				    '\n             rear  vehicle :', ['{0:0.4f}'.format(j) for j in env.variablesKinematicsRearVehicle()],  '[', action_rear,  '(' + str(action_delay_timer_rear-1)  + '/' + str(action_delay_rear)  + ')', ']', \
+				    '\n             other vars    :', [['{0:0.4f}'.format(j) for j in x] for x in env.variablesEnvironment()], \
+				    '\n             reward        : [ (' + str(episode_reward_front) + ')  (' + str(reward_front) + ') ]  [ (' + str(episode_reward_rear) + ')  (' + str(reward_rear) + ') ]  ('+ str(extra['bound'])+')')
+				#time.sleep(0.1)
+
+
+			if done or t + 1 == STEP_LIMIT:
 				agent_front.update_target_model()
 				agent_rear.update_target_model()
 				print('-----------')
-				print('episode: {0:3d}/{1:3d} :: FRONT: score: {2}, e: {3:.2}'
-					  .format(e, EPISODES, episode_reward_front, agent_front.epsilon))
-				print('                 :: REAR:  score: {0}, e: {1:.2}'
+				print('episode: {0:5d}/{1:5d} :: FRONT: score: {2}, e: {3:.2}'
+					  .format(e+1, EPISODES, episode_reward_front, agent_front.epsilon))
+				print('                     :: REAR:  score: {0}, e: {1:.2}'
 					  .format(episode_reward_rear, agent_rear.epsilon))
 				break
+				
 
+			#replaying memories
 			if len(agent_front.memory) > BATCH_SIZE:
 				agent_front.replay(BATCH_SIZE)
-
+			
 			if len(agent_rear.memory) > BATCH_SIZE:
 				agent_rear.replay(BATCH_SIZE)
 
+			
+			#replaying memories
+			#if len(agent_front.memory) > BATCH_SIZE and len(agent_rear.memory) > BATCH_SIZE:
+			#	#threading replays
+			#	replay_thread_front = threading.Thread(target=agent_front.replay, args=(BATCH_SIZE,))
+			#	replay_thread_rear  = threading.Thread(target=agent_rear.replay,  args=(BATCH_SIZE,))
+			#
+			#	replay_thread_front.start()
+			#	replay_thread_rear.start()
+			#
+			#	replay_thread_front.join()
+			#	replay_thread_rear.join()
+
 
 		#saving agents
-		if e % 10 == 0:
-			agent_front.save(WEIGHT_NAME+'_front_'+str(e)+'.h5')
-			agent_rear.save(WEIGHT_NAME+'_rear_'+str(e)+'.h5')
-
-		#if e % 10 == 0:
-		#	agent.save("./save/cartpole-ddqn.h5")
-		
-
-		#print(environment_state_memory[0])
-
-		print('\n---------')
-		print('DONE!!!')
-		print('---------\n')
-
+		if e % 50 == 0:
+			agent_front.save(PATH_TO_WEIGHTS+'front\\'+WEIGHT_NAME+'_front_'+str(e)+'.h5')
+			agent_rear.save(PATH_TO_WEIGHTS+'rear\\'+WEIGHT_NAME+'_rear_'+str(e)+'.h5')
 
 		save_to_file = True
 
-		if save_to_file:
+		if save_to_file and e % 250 == 0:
 			print('saving env state memory to file')
-			import pickle
 
-			with open('env_state_mem.txt', 'wb') as fp:
+			with open('env_state_mem\\adversary\\env_state_mem_adversary_'+str(e)+'.txt', 'wb') as fp:
 				pickle.dump(environment_state_memory, fp)
+
+	
+
+	print('\n---------')
+	print('DONE!!!')
+	print('---------\n')
+
+
+	
 
 		
 
