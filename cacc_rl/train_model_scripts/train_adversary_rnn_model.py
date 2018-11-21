@@ -7,14 +7,14 @@ import time
 import pickle
 
 #params
-EPOCHS = 2
+EPOCHS = 200
 BATCH_SIZE	= 32
 BATCHES_PER_EPOCH = 256
 VALIDATION_SPLIT = 0.35
 
 NUM_PARTITIONS = 200
 NUM_CLASSES = 21
-NUM_RUNS = 10
+NUM_RUNS = 5
 
 #hyper params
 LEARNING_RATE          = 1e-2
@@ -228,7 +228,7 @@ model.summary()
 
 
 #-----------------
-#TRAIN
+#TRAINING MODEL
 #-----------------
 
 def train_model(r, train_partition, valid_partition):
@@ -267,7 +267,7 @@ def train_model(r, train_partition, valid_partition):
 	print('--------------------')
 
 	callback_list = [
-		ModelCheckpoint(new_weight_path, monitor='val_acc', verbose=1, period=1), 
+		ModelCheckpoint(new_weight_path, monitor='val_acc', verbose=1, period=20), 
 		TensorBoard(log_dir=new_tensorboard_log_dir_path, histogram_freq=1, batch_size=BATCH_SIZE, write_graph=True)
 	]
 

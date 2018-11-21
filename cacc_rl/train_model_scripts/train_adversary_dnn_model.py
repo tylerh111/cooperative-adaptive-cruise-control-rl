@@ -199,7 +199,7 @@ model.summary()
 
 
 #-----------------
-#TRAIN
+#TRAINING MODEL
 #-----------------
 
 def train_model(r, train_partition, valid_partition):
