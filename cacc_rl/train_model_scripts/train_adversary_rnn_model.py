@@ -7,7 +7,7 @@ import time
 import pickle
 
 #params
-EPOCHS = 3
+EPOCHS = 2
 BATCH_SIZE	= 32
 BATCHES_PER_EPOCH = 256
 VALIDATION_SPLIT = 0.35
