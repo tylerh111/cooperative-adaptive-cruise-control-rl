@@ -21,13 +21,13 @@ class Vehicle():
 		assert top_velocity > 0, "top_velocity is not positive"
 		assert top_acceleration > 0, "top_acceleration is not positive"
 		assert top_jerk > 0, "top_jerk is not positive"
-		self.top_velocity = top_velocity
-		self.top_acceleration = top_acceleration
-		self.top_jerk = top_jerk
+		self.top_vel = top_velocity
+		self.top_acc = top_acceleration
+		self.top_jer = top_jerk
 
 	def toArray(self):
 		return [self.length, self.width, self.height, self.weight,
-		  self.top_velocity, self.top_acceleration, self.top_jerk]
+		  self.top_vel, self.top_acc, self.top_jer]
 
 	def __repr__(self):
 		return self.__str__()

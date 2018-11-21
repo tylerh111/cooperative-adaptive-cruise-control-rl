@@ -28,8 +28,8 @@ class DQNAgent:
 		
 		self.memory = deque(maxlen=memory_size)
 
-		self.model = self._build_model()
-		self.target_model = self._build_model(weigths_path)
+		self.model = self._build_model(weigths_path)
+		self.target_model = self._build_model()
 		self.update_target_model()
 
 		return
