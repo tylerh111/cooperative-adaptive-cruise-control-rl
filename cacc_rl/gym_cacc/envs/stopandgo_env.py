@@ -26,93 +26,43 @@ class StopAndGo(gym.Env):
 
 
 	"""
-	StopAndGo: __init__
+	Stopandgo: __init__
 	
 	"""
-	def __init__(self, vehicle = Vehicle(), target_headway = 2, init_velocity = 25, init_acceleration = 1):
+	def __init__(self,):
 		
-		#custom variables
-		assert target_headway > 0, "target_headway is not positive"
-		self.target_headway = target_headway
+		self.seed = self.seed_env()
 
-		assert init_velocity > 0, "init_velocity is not positive"
-		self.init_velocity = init_velocity
-
-		self.vehicle = vehicle
-
-		'''
-		Observation State has the form (headway, delta headway, f_acc, r_vel, r_acc)
-		ndx | name           | low       -> high
-		0   | headway (hw)   | -inf      -> inf
-		1   | delta hw (dhw) | -inf      -> inf
-		2   | f_acc          | -top_acc. -> top_acc.
-		3   | r_vel          | 0         -> top_velocity
-		4   | r_acc          | -top_acc. -> top_acc.
-		'''
-		low = np.array([
-			-np.inf,					#headway
-			-np.inf,					#delta headway
-			-self.vehicle.top_acceleration,	#f_acc
-			0,								#r_vel
-			-self.vehicle.top_acceleration,	#r_acc
-		])
+		self.vehicle = None
+		self.granularity = None
+		self.init_vel = None
+		self.init_acc = None
 		
-		high = np.array([
-			np.inf,						#headway
-			np.inf,						#delta headway
-			self.vehicle.top_acceleration,	#f_acc
-			self.vehicle.top_velocity,		#r_vel
-			self.vehicle.top_acceleration,	#r_acc
-		])
-
-		'''
-		Action Space has the form (jerk) #jerk refers to the derivative of the rear vehicle's acceleration
-			 |     < 0         = 0        > 0
-		jerk |  decelerate   nothing   accelerate
-			 |   (brake)    (nothing)    (gas)
-		'''
-		#action_high = np.array([vehicle.top_jerk])
-
-		#self.action_space = spaces.Box(-action_high, action_high , dtype=np.float32)
-
-		'''
-		Action Space is percentage of jerk [-1, 1] # jerk refers to the derivative of the rear vehicle's acceleration wrt time
-			 |  -1 <= j < 0    j = 0    0 < j <= 1
-		jerk |   decelerate   nothing   accelerate
-			 |    (brake)    (nothing)    (gas)
-		The interval [-1, 1] is divided into 21 intervals:	[-1, -0.90), ... [-0.20, 0), [-0.10, 0), [0], (0, 0.10], (0.10, 0.20], ... (0.90, 1]
-			interval compressed to a single value:			[-1],        ... [-0.20],    [-0.10],    [0],    [0.10],       [0.20], ...       [1]
-			discrete value in action_space:					0,           ... 8,          9,          10,     11,           12,     ...       20
-		'''
-		self.action_space = spaces.Discrete(21) # jerk is a percentage interval from -1 to 1 (where 0 is no jerk)
-		self.observation_space = spaces.Box(low, high, dtype=np.float32)
-
-		self.seed()
-		self.viewer = None
+		self.action_space = None
+		self.observation_space = None
 
 		self.state = None
-		
 
 		#Environment Variables
 		self.headway_lower_bound = 0
-		self.headway_upper_bound = 100 #MUST CHANGE!!!!!!! (in terms of target_headway)
+		self.headway_upper_bound = 0
 
-		self.headway = self.target_headway
-		self.delta_headway = 0
+		self.hw = 0
+		self.dhw = 0
+		self.target_hw = 0
 
 		self.num_steps = 0
 
 		#Front vehicle kinematics
-		self.f_pos = self.target_headway * self.init_velocity + self.vehicle.length
-		self.f_vel = self.init_velocity
+		self.f_pos = 0
+		self.f_vel = 0
 		self.f_acc = 0
-		self.f_jer = 0
+		#self.f_jer = 0
 		
 		#Rear vehicle kinematics
 		self.r_pos = 0
-		self.r_vel = self.init_velocity
+		self.r_vel = 0
 		self.r_acc = 0
-		self.r_jer = 0
 
 
 		self.reward_total_front = 0
@@ -131,7 +81,7 @@ class StopAndGo(gym.Env):
 		self.new_acc = 0
 		self.new_jer = 0
 
-		self.dt = 0
+		self.dt     = 0
 		self.dt_acc = 0
 		self.dt_jer = 0
 		
@@ -140,8 +90,69 @@ class StopAndGo(gym.Env):
 		return
 
 
+
+	def _update_action_space(self, granularity):
+
+		'''
+		Action Space is percentage of jerk [-1, 1] # jerk refers to the derivative of the rear vehicle's acceleration wrt time
+			 |  -1 <= j < 0    j = 0    0 < j <= 1
+		jerk |   decelerate   nothing   accelerate
+			 |    (brake)    (nothing)    (gas)
+		The interval [-1, 1] is divided into 21 intervals:	[-1, -0.90), ... [-0.20, 0), [-0.10, 0), [0], (0, 0.10], (0.10, 0.20], ... (0.90, 1]
+			interval compressed to a single value:			[-1],        ... [-0.20],    [-0.10],    [0],    [0.10],       [0.20], ...       [1]
+			discrete value in action_space:					0,           ... 8,          9,          10,     11,           12,     ...       20
+		'''
+
+		# jerk is a percentage interval from -1 to 1 (where 0 is no jerk)
+		
+		self.action_space = spaces.Discrete(granularity) 
+
+
+
+	def _update_observation_space(self, vehicle):
+
+		'''
+		Observation State has the form (headway, delta headway, f_acc, r_vel, r_acc)
+		ndx | name           | low       -> high
+		0   | headway (hw)   | -inf      -> inf
+		1   | delta hw (dhw) | -inf      -> inf
+		2   | f_acc          | -top_acc. -> top_acc.
+		3   | r_vel          | 0         -> top_velocity
+		4   | r_acc          | -top_acc. -> top_acc.
+		5   | r_jer          | -top_jer. -> top_jer.
+		'''
+		low = np.array([
+			-np.inf,					#headway
+			-np.inf,					#delta headway
+			-vehicle.top_acc,	#f_acc
+			0,							#r_vel
+			-vehicle.top_acc,	#r_acc
+			#-vehicle.top_jer,
+		])
+		
+		high = np.array([
+			np.inf,						#headway
+			np.inf,						#delta headway
+			vehicle.top_acc,	#f_acc
+			vehicle.top_vel,		#r_vel
+			vehicle.top_acc,	#r_acc
+			#vehicle.top_jer,
+		])
+
+		self.observation_space = spaces.Box(low, high, dtype=np.float32)
+
+
+
+
+
+
+
+
+
+
+
 	"""
-	Adversary: reward function
+	Stopandgo: reward function
 	
 	"""
 	def _reward_function(self, t_hw, avg_hw, std_hw):
@@ -237,21 +248,67 @@ class StopAndGo(gym.Env):
 
 	
 
+	def _reward_function_old(self, t_hw, hw, dhw):
+
+		def checkBounds(x, low, high):
+			return low <= x and x <= high
+
+		#independent of delat_headway
+		if checkBounds(hw, t_hw - 0.10, t_hw + 0.10):
+			reward = 50 #goal range small
+			bound = 'A'
+		elif checkBounds(hw, t_hw + 0.10, t_hw + 0.25):
+			reward = 5  #goal range large (far)
+			bound = 'B'
+		elif checkBounds(hw, t_hw - 0.25, t_hw - 0.10):
+			reward = 5  #goal range large (close)
+			bound = 'C'
+
+		#dependent of delta_headway and too close
+		elif checkBounds(hw, t_hw - 1.50, t_hw - 0.25) and dhw <= 0: #checkBounds(dhw, -0.10, 0):
+			reward = -5 #too close
+			bound = 'D'
+		elif checkBounds(hw, t_hw - 1.50, t_hw - 0.25) and dhw > 0: #checkBounds(dhw, 0, 0.10):
+			reward = 1  #falling behind from being too close
+			bound = 'E'
+		elif checkBounds(hw, -np.inf, t_hw - 1.50):
+			reward = -100 #crash
+			bound = 'DONE??'
+
+		#dependent of delta_headway and too far
+		elif checkBounds(hw, t_hw + 0.25, t_hw + 8.00) and dhw <= 0: #checkBounds(dhw, -0.10, 0):
+			reward = 1  #closing in from being too far
+			bound = 'F'
+		elif checkBounds(hw, t_hw + 0.25, t_hw + 8.00) and dhw > 0: #checkBounds(dhw, 0, 0.10):
+			reward = -1 #too far (and getting farther away)
+			bound = 'G'
+		elif checkBounds(hw, t_hw + 8.00, np.inf) and dhw <= 0: #checkBounds(dhw, -0.10, 0):
+			reward = 0.5 #closing in from being too far (even farther away)
+			bound = 'H'
+		elif checkBounds(hw, t_hw + 8.00, np.inf) and dhw > 0: #checkBounds(dhw, 0, 0.10):
+			reward = -50 #way too far
+			bound = 'I'
+		elif hw == np.inf and dhw == np.nan:
+			reward = -50
+			bound = 'inf'
+		
+		return (reward, bound)
+
+
+
+
 	"""
-	Adversary: step
+	Stopandgo: step
 	
 	"""
-	def	step(self, action):
-		assert self.action_space.contains(action), "%r (%s) invalid"%(action, type(action))
+	def	step(self, action_rear):
+		assert self.action_space.contains(action_rear), "%r (%s) invalid"%(action_rear, type(action_rear))
 		
 		state = self.state
 
 		curr_hw, curr_dhw, curr_r_acc, curr_f_vel, curr_f_acc = state
 
-
-		#curr_hw, curr_dhw, curr_r_acc, curr_f_vel, curr_f_acc = curr_state_front
-		#curr_hw, curr_dhw, curr_f_acc, curr_r_vel, curr_r_acc = curr_state_rear
-
+		
 		#update front vehicle
 		def checkBounds(x, low, high):
 			return low <= x and x < high
@@ -274,53 +331,91 @@ class StopAndGo(gym.Env):
 
 
 		if checkBounds(self.num_steps, 0, sec_step(6)):
-			self.f_jer = 0
-			self.f_acc = 0
+			#self.f_jer = 0
+			#self.f_acc = 0
+			action_front = 10
 		elif checkBounds(self.num_steps, sec_step(6), sec_step(6 + self.dt_jer)):
-			self.f_jer = -self.new_jer
-			self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration, self.f_jer / fps + self.f_acc))
+			#self.f_jer = -self.new_jer
+			#self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration, self.f_jer / fps + self.f_acc))
+			action_front = 0
 		elif checkBounds(self.num_steps, sec_step(6 + self.dt_jer), sec_step(6 + self.dt_jer + self.dt_acc)):
-			self.f_jer = 0
-			self.f_acc = -self.new_acc
+			#self.f_jer = 0
+			#self.f_acc = -self.new_acc
+			action_front = 0
 		elif checkBounds(self.num_steps, sec_step(6 + self.dt_jer + self.dt_acc), sec_step(6 + self.dt)):
-			self.f_jer = self.new_jer
-			self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration, self.f_jer / fps + self.f_acc))
+			#self.f_jer = self.new_jer
+			#self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration, self.f_jer / fps + self.f_acc))
+			action_front = 10
 		elif checkBounds(self.num_steps, sec_step(6 + self.dt), sec_step(6 + self.dt + 6)):
-			self.f_jer = 0
-			self.f_acc = 0
+			#self.f_jer = 0
+			#self.f_acc = 0
+			action_front = 10
 		elif checkBounds(self.num_steps, sec_step(6 + self.dt + 6), sec_step(6 + self.dt + 6 + self.dt_jer)):
-			self.f_jer = self.new_jer
-			self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration, self.f_jer / fps + self.f_acc))
+			#self.f_jer = self.new_jer
+			#self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration, self.f_jer / fps + self.f_acc))
+			action_front = 20
 		elif checkBounds(self.num_steps, sec_step(6 + self.dt + 6 + self.dt_jer), sec_step(6 + self.dt + 6 + self.dt_jer + self.dt_acc)):
-			self.f_jer = 0
-			self.f_acc = self.new_acc
+			#self.f_jer = 0
+			#self.f_acc = self.new_acc
+			action_front = 20
 		elif checkBounds(self.num_steps, sec_step(6 + self.dt + 6 + self.dt_jer + self.dt_acc), sec_step(6 + self.dt + 6 + self.dt)):
-			self.f_jer = -self.new_jer
-			self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration, self.f_jer / fps + self.f_acc))
+			#self.f_jer = -self.new_jer
+			#self.f_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration, self.f_jer / fps + self.f_acc))
+			action_front = 10
 		elif checkBounds(self.num_steps, sec_step(6 + self.dt + 6 + self.dt), np.inf):
-			self.f_jer = 0
-			self.f_acc = 0
+			#self.f_jer = 0
+			#self.f_acc = 0
+			action_front = 10
 
-		self.f_vel = max(0,	min(self.vehicle.top_velocity, self.f_acc / fps + self.f_vel))
+
+		
+		self.f_eq_point = (action_front - self.zero_point) / self.zero_point * self.vehicle.top_acc
+		self.r_eq_point = (action_rear  - self.zero_point) / self.zero_point * self.vehicle.top_acc
+
+
+		def getNextAcc(eq, a):
+			if eq == 0:
+				return 0
+			if eq < 0:
+				return max(eq, -self.vehicle.top_jer / fps + a)
+			if eq > 0:
+				return min(eq,  self.vehicle.top_jer / fps + a)
+			raise ValueError('%r (%s) invalid'%(eq, type(eq)))
+
+
+		#update front vehicle
+		#self.f_jer = (action_front - 10) / 10 * self.vehicle.top_jer
+		#self.f_acc = max(-self.vehicle.top_acc, min(self.vehicle.top_acc,	self.f_jer / fps + self.f_acc))
+		self.f_acc = getNextAcc(self.f_eq_point, self.f_acc)
+		self.f_vel = max(0, min(self.vehicle.top_vel, self.f_acc / fps + self.f_vel))
 		self.f_pos = self.f_vel / fps + self.f_pos
 
 		
 		#update rear vehicle
 		#self.r_jer = (action_rear - 10) / 10 * self.vehicle.top_jerk
 		#self.r_acc = max(-self.vehicle.top_acceleration, min(self.vehicle.top_acceleration,	self.r_jer / fps + self.r_acc))
-		self.r_acc = (action - 10) / 10 * self.vehicle.top_acceleration
-		self.r_vel = max(0,	min(self.vehicle.top_velocity, self.r_acc / fps + self.r_vel))
+		self.r_acc = getNextAcc(self.r_eq_point, self.r_acc)
+		self.r_vel = max(0,	min(self.vehicle.top_vel, self.r_acc / fps + self.r_vel))
 		self.r_pos = self.r_vel / fps + self.r_pos
 		
 
 		#update other environment variables
 		#self.headway = max(self.headway_lower_bound, np.inf if self.r_vel == 0 else (self.f_pos - self.vehicle.length - self.r_pos) / self.r_vel)
-		self.headway = np.inf if self.r_vel == 0 else (self.f_pos - self.vehicle.length - self.r_pos) / self.r_vel
-		self.delta_headway = self.headway - curr_hw
+		#self.headway = np.inf if self.r_vel == 0 else (self.f_pos - self.vehicle.length - self.r_pos) / self.r_vel
+		#self.delta_headway = self.headway - curr_hw
+
+		self.hw = (self.f_pos - self.vehicle.length - self.r_pos) / self.r_vel if self.r_vel != 0 else np.inf
+		if self.hw != np.inf and curr_hw != np.inf:
+			self.dhw = self.hw - curr_hw
+		elif self.hw != np.inf and curr_hw == np.inf:
+			self.dhw = self.hw
+		else:
+			self.dhw = self.hw - curr_hw
+
 
 		#update state
 		#state_front = (self.headway, self.delta_headway, self.r_acc, self.f_vel, self.f_acc)
-		state  = (self.headway, self.delta_headway, self.f_acc, self.r_vel, self.r_acc)
+		state = (self.hw, self.dhw, self.f_acc, self.r_vel, self.r_acc)
 
 		#self.state = (state_front, state_rear)
 		self.state = state
@@ -328,8 +423,8 @@ class StopAndGo(gym.Env):
 		self.num_steps += 1
 
 
-		self.history_hw.append(self.headway)
-		self.history_dhw.append(self.delta_headway)
+		self.history_hw.append(self.hw)
+		self.history_dhw.append(self.dhw)
 
 		def calcAvg(x):
 			return np.mean(x)
@@ -350,79 +445,28 @@ class StopAndGo(gym.Env):
 		#done = self.headway <= self.headway_lower_bound or \
 		#	   self.headway >= self.headway_upper_bound 
 		
-		done = self.f_pos - self.r_pos <= 0 #or \
-			   #self.f_pos - self.r_pos > self.headway_upper_bound * self.vehicle.top_velocity
+		#done = self.f_pos - self.r_pos <= 0 #or \
+		#	   self.f_pos - self.r_pos > self.headway_upper_bound * self.vehicle.top_velocity
 		
+		done = self.hw <= self.headway_lower_bound or \
+			   self.hw >= self.headway_upper_bound 
+
 		done = bool(done)
 		
-
-
-		t_hw = self.target_headway
-
 		if not done:
-			self._reward_function(self.target_headway, avg_hw, std_hw)
+			#reward, bound = self._reward_function(self.target_hw, self.avg_hw, self.std_hw)
+			try:
+				reward, bound = self._reward_function_old(self.target_hw, self.hw, self.dhw)
+			except:
+				print('self.target_hw =', self.target_hw)
+				print('self.hw        =', self.hw)
+				print('self.dhw       =', self.dhw)
+				raise
+
 		else:
 			reward = -150
 			bound  = 'DONE'
 
-
-		
-		##reward
-		#if not done:
-		#	#independent of delat_headway
-		#	if checkBounds(self.headway, self.target_headway - 0.10, self.target_headway + 0.10):
-		#		reward_rear = 50 #goal range small
-		#		reward_front = -50
-		#	elif checkBounds(self.headway, self.target_headway + 0.10, self.target_headway + 0.25):
-		#		reward_rear = 5  #goal range large (far)
-		#		reward_front = -5
-		#	elif checkBounds(self.headway, self.target_headway - 0.25, self.target_headway - 0.10):
-		#		reward_rear = 5  #goal range large (close)
-		#		reward_front = -5
-
-		#	#dependent of delta_headway and too close
-		#	elif checkBounds(self.headway, self.target_headway - 1.50, self.target_headway - 0.25) and self.delta_headway <= 0: #checkBounds(self.delta_headway, -0.10, 0):
-		#		reward_rear = -5 #too close
-		#		reward_front = 5
-		#	elif checkBounds(self.headway, self.target_headway - 1.50, self.target_headway - 0.25) and self.delta_headway > 0: #checkBounds(self.delta_headway, 0, 0.10):
-		#		reward_rear = 1  #falling behind from being too close
-		#		reward_front = -1
-		#	elif checkBounds(self.headway, 0, self.target_headway - 1.50):
-		#		reward_rear = -100 #crash
-		#		reward_front = 100
-
-		#	#dependent of delta_headway and too far
-		#	elif checkBounds(self.headway, self.target_headway + 0.25, self.target_headway + 8.00) and self.delta_headway <= 0: #checkBounds(self.delta_headway, -0.10, 0):
-		#		reward_rear = 1  #closing in from being too far
-		#		reward_front = -1
-		#	elif checkBounds(self.headway, self.target_headway + 0.25, self.target_headway + 8.00) and self.delta_headway > 0: #checkBounds(self.delta_headway, 0, 0.10):
-		#		reward_rear = -1 #too far (and getting farther away)
-		#		reward_front = 1
-		#	elif checkBounds(self.headway, self.target_headway + 8.00, self.headway_upper_bound) and self.delta_headway <= 0: #checkBounds(self.delta_headway, -0.10, 0):
-		#		reward_rear = 0.5 #closing in from being too far (even farther away)
-		#		reward_front = -0.5 #0.5
-		#	elif checkBounds(self.headway, self.target_headway + 8.00, self.headway_upper_bound) and self.delta_headway > 0: #checkBounds(self.delta_headway, 0, 0.10):
-		#		reward_rear = -50 #way too far
-		#		reward_front = 50
-			
-		#else:
-		#	reward_rear = -100
-		#	reward_front = 100
-		
-		
-		#reward 
-		#MUST UPDATE WITH MORE DETAIL!!!
-		#if not done:
-		#	reward_front = -1.0
-		#	reward_rear  = 1.0
-		#else:
-		#	#logger.warn(" You called 'step()' after simulation was complete")
-		#	reward_front = 1.0
-		#	reward_rear  = -1.0
-
-		#return  (np.array(state_front), np.array(state_rear)), \
-		#		(reward_front, reward_rear), \
-		#		done, {}
 
 		return  np.array(state), \
 				reward, \
@@ -433,62 +477,110 @@ class StopAndGo(gym.Env):
 
 
 	"""
-	Adversary: reset
+	Stopandgo: reset
 	
 	"""
-	def reset(self, vehicle = None, target_headway = None, init_velocity = 25, init_acceleration = 1):
+	def reset(self, vehicle = None, target_hw = None, granularity = None, init_vel = None, alpha_vel = None, init_acc = None, alpha_acc = None):
 
-		#Environment Variables
-		if vehicle != None:
-			#assert vehicle > 0, "vehicle is not positive"
-			self.vehicle = vehicle
+		self.seed = self.seed_env()
 
-		if target_headway != None:
-			assert target_headway > 0, "target_headway is not positive"
-			self.target_headway = target_headway
+		#checking custom variable settings
+		def checkCustomVariables():
+			if vehicle != None:
+				assert type(vehicle) is Vehicle, "vehicle is not type Vehicle"
+				self.vehicle = vehicle
+			else:
+				self.vehicle = Vehicle()
 
-		if init_velocity != None:
-			assert init_velocity >= 0, "init_velocity is negitive"
-			assert init_velocity <= self.vehicle.top_velocity, "init_velocity is higher than top_velocity"
-			self.init_velocity = init_velocity
+			if target_hw != None:
+				assert target_hw > 0, "target_hw is not positive"
+				self.target_hw = target_hw
+			else:
+				self.target_hw = 2
 
-		if init_acceleration != None:
-			assert init_acceleration >= -self.vehicle.top_acceleration, "init_acceleration is lower than top_acceleration"
-			assert init_acceleration <=  self.vehicle.top_acceleration, "init_acceleration is higher than top_acceleration"
-			self.init_acceleration = init_acceleration
+			if granularity != None:
+				assert granularity > 0, "granularity is not positive"
+				assert granularity % 2 == 1, "granularity is not odd"
+				self.granularity = granularity
+			else:
+				self.granularity = 21
 
-		self.headway = self.target_headway
-		self.delta_headway = 0
+			if init_vel != None:
+				assert init_vel >= 0, "init_vel is negitive"
+				assert init_vel <= self.vehicle.top_vel, "init_vel is higher than top_velocity"
+				self.init_vel = init_vel
+			else:
+				self.init_vel = 0
+
+			if alpha_vel != None:
+				assert alpha_vel >= 0, "alpha_vel is negitive"
+				assert alpha_vel <= self.vehicle.top_vel, "alpha_vel is higher than top_velocity"
+				self.alpha_vel = alpha_vel
+			else:
+				self.alpha_vel = 0
+
+			if init_acc != None:
+				assert init_acc >= -self.vehicle.top_acc, "init_acc is lower than top_acceleration"
+				assert init_acc <=  self.vehicle.top_acc, "init_acc is higher than top_acceleration"
+				self.init_acc = init_acc
+			else:
+				self.init_acc = 0
+
+			if alpha_acc != None:
+				assert alpha_acc >= 0, "alpha_acc is negitive"
+				assert alpha_acc <= self.vehicle.top_acc, "alpha_acc is higher than top_velocity"
+				self.alpha_acc = alpha_acc
+			else:
+				self.alpha_acc = 0
+
+		checkCustomVariables()
+
+
+		self.zero_point = (self.granularity - 1) / 2
+		
+		self._update_action_space(self.granularity)
+		self._update_observation_space(self.vehicle)
+
+		self.headway_lower_bound = 0
+		self.headway_upper_bound = 3 * self.target_hw
 
 		self.num_steps = 0
 
-
 		#Front vehicle kinematics
-		self.f_pos = random.uniform(self.target_headway, self.target_headway + 5) * self.init_velocity + self.vehicle.length
-		self.f_vel = random.gauss(self.init_velocity, 4)
-		#self.f_pos = random.uniform(self.target_headway, self.target_headway + 5) * 25 + self.vehicle.length
-		#self.f_vel = 25
+		self.f_pos = random.uniform(self.target_hw, self.target_hw + 1) * self.init_vel + self.vehicle.length
+		self.f_vel = random.gauss(self.init_vel, self.alpha_vel)
 		self.f_acc = 0
 		self.f_jer = 0
+
+		self.f_eq_point = 0 #action of the front vehicle
 		
 		#Rear vehicle kinematics
 		self.r_pos = 0
-		self.r_vel = random.gauss(self.init_velocity, 4)
-		self.r_acc = random.gauss(self.init_acceleration, 4)
-		self.r_jer = 0
+		self.r_vel = random.gauss(self.init_vel, self.alpha_vel)
+		self.r_acc = random.gauss(self.init_acc, self.alpha_acc)
+		#self.r_jer = 0
+
+		self.r_eq_point = 0 #aciton of the rear vehicle
 
 
+		self.reward_total = 0
 
-		self.reward_total_front = 0
-		self.reward_total_rear  = 0
+		self.hw = self.f_pos / self.r_vel
+		self.dhw = 0
 
-		self.history_hw  = []
-		self.history_dhw = []
+		self.history_hw  = [self.hw]
+		self.history_dhw = [self.dhw]
+
+		self.avg_hw  = self.hw
+		self.avg_dhw = self.dhw
+
+		self.std_hw  = self.hw
+		self.std_dhw = self.dhw
 
 
 		#front vehicle kinematics change variables
 		self.new_vel = random.uniform(3, 5)
-		self.new_acc = self.vehicle.top_acceleration
+		self.new_acc = self.vehicle.top_acc
 
 		self.dt = (self.f_vel - self.new_vel) / self.new_acc
 
@@ -498,11 +590,9 @@ class StopAndGo(gym.Env):
 		self.dt_acc = self.dt - 2 * self.dt_jer
 		
 		
-
-		
 		#state
 		#state_front = (self.headway, self.delta_headway, self.r_acc, self.f_vel, self.f_acc)
-		state  = (self.headway, self.delta_headway, self.f_acc, self.r_vel, self.r_acc)
+		state = (self.hw, self.dhw, self.f_acc, self.r_vel, self.r_acc)
 
 		self.state = state
 
@@ -512,28 +602,26 @@ class StopAndGo(gym.Env):
 	
 
 	def variablesKinematicsFrontVehicle(self):
-		return [self.f_pos, self.f_vel, self.f_acc, self.f_jer]
+		return [self.f_pos, self.f_vel, self.f_acc]#, self.f_jer]
 
 	def variablesKinematicsRearVehicle(self):
-		return [self.r_pos, self.r_vel, self.r_acc, self.r_jer]
+		return [self.r_pos, self.r_vel, self.r_acc]#, self.r_jer]
 
 	def variablesEnvironment(self):
-		return [[self.headway, self.delta_headway], [self.avg_hw, self.avg_dhw], [self.std_hw, self.std_dhw]]
+		return [[self.hw, self.dhw], [self.avg_hw, self.avg_dhw], [self.std_hw, self.std_dhw]]
 
 	def variablesOthers(self):
 		return [self.new_vel, self.new_acc, self.new_jer, self.dt * fps, self.dt_acc * fps, self.dt_jer * fps]
 
-	def seed(self, seed=None):
+	def getSeed(self):
+		return self.seed
+
+
+	def seed_env(self, seed=None):
 		self.np_random, seed = seeding.np_random(seed)
 		return [seed]
 
 
-	#def render(self, mode='human', close=False):
-	#	pass
-		
 
-	def close(self):
-		print('closing environment')
-		return
 
 

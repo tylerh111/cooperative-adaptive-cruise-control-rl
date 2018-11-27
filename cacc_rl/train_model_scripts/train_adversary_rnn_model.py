@@ -6,15 +6,17 @@ import numpy as np
 import time
 import pickle
 
+from tqdm import tqdm
+
 #params
-EPOCHS = 200
+EPOCHS = 100
 BATCH_SIZE	= 32
 BATCHES_PER_EPOCH = 256
-VALIDATION_SPLIT = 0.35
+VALIDATION_SPLIT = 0.20
 
 NUM_PARTITIONS = 200
 NUM_CLASSES = 21
-NUM_RUNS = 5
+NUM_RUNS = 3
 
 #hyper params
 LEARNING_RATE          = 1e-2
@@ -39,7 +41,7 @@ DATA_PATH_ORIGIN = 'F:\\workspace\\cacc_rl\\adversary_old_reward\\'
 DATA_PATH = DATA_PATH_ORIGIN + MODEL_TYPE + DIR_SEP
 
 DATA_BATCHES_PATH = DATA_PATH + 'data_batches' + DIR_SEP + VEHICLE_TRAINED + DIR_SEP
-DATA_BATCH_NAME = 'batch_rnn_adg_v1_0.txt'
+DATA_BATCH_NAME = 'batch_dnn_adg_v1_0.txt'
 DATA_BATCH_PATH = DATA_BATCHES_PATH + DATA_BATCH_NAME
 
 DATA_SETS_PATH = DATA_PATH + 'data_sets' + DIR_SEP + VEHICLE_TRAINED + DIR_SEP
@@ -49,11 +51,11 @@ DATA_PARTITION_NAME = 'partition_' # number follows
 DATA_PARTITION_PATH = DATA_SET_PATH + DATA_PARTITION_NAME
 
 VERSION_MAJOR_NUMBER = 1
-VERSION_MINOR_NUMBER = 0
+VERSION_MINOR_NUMBER = 1
 VERSION_NAME = MODEL_TYPE + '_' + VEHICLE_TRAINED + '_at_v' + str(VERSION_MAJOR_NUMBER) + '_' + str(VERSION_MINOR_NUMBER)
 
 WEIGHTS_PATH = PROJECT_PATH + 'weights\\' + MODEL_TYPE + '_model_adversary\\' + VEHICLE_TRAINED + DIR_SEP
-WEIGHT_NAME = VERSION_NAME + '_weights.{epoch:04d}.hdf5'
+WEIGHT_NAME = VERSION_NAME + '_weights_{epoch:04d}.hdf5'
 #WEIGHT_PATH = WEIGHTS_PATH + WEIGHT_NAME
 
 TENSORBOARD_LOG_DIR_PATH = DATA_PATH_ORIGIN + 'tb_logs' + DIR_SEP
@@ -80,13 +82,13 @@ if LOAD_FROM_DATA_BATCH and not ALREADY_LOADED_DATA_BATCH:
 	print('done.')
 	
 
-	print('creating data set...')#, end='')
+	#print('creating data set...')#, end='')
 	data_set = [[] for i in range(NUM_CLASSES)]
 
 	get_action = lambda frame: frame[5]
 	get_reward = lambda frame: frame[6]
 
-	for sim in data_batch:
+	for sim in tqdm(data_batch, desc='Creating data set'):
 		if len(sim) > 480:
 			j = TIME_SIZE
 
@@ -99,32 +101,32 @@ if LOAD_FROM_DATA_BATCH and not ALREADY_LOADED_DATA_BATCH:
 
 				j += 1
 
-	print('done')
+	#print('done')
 
 
-	print('partitioning data set...')#, end='')
+	#print('partitioning data set...')#, end='')
 
 	data_partitions = [([], []) for i in range(NUM_PARTITIONS)]
 
-	for i in range(NUM_CLASSES):
+	for i in tqdm(range(NUM_CLASSES), desc='Partitioning data set'):
 		for p in data_set[i]:
 			r = random.randrange(0, NUM_PARTITIONS)
 			data_partitions[r][0].append(p)
 			data_partitions[r][1].append(i)
 
-	print('done.')
+	#print('done.')
 
 
-	print('saving data sets...')#, end='')
+	#print('saving data sets...')#, end='')
 	os.makedirs(DATA_SET_PATH)
 
 	i = -1
-	for partition in data_partitions:
+	for partition in tqdm(data_partitions, desc='Saving data sets'):
 		i+=1
 		with open(DATA_PARTITION_PATH + str(i) + '.txt', 'wb') as f:
 			pickle.dump(partition, f)
 
-	print('done.')
+	#print('done.')
 
 
 	del data_partitions
@@ -223,7 +225,7 @@ model.summary()
 
 
 
-
+#from keras_tqdm import TQDMCallback
 
 
 
@@ -268,7 +270,8 @@ def train_model(r, train_partition, valid_partition):
 
 	callback_list = [
 		ModelCheckpoint(new_weight_path, monitor='val_acc', verbose=1, period=20), 
-		TensorBoard(log_dir=new_tensorboard_log_dir_path, histogram_freq=1, batch_size=BATCH_SIZE, write_graph=True)
+		TensorBoard(log_dir=new_tensorboard_log_dir_path, histogram_freq=1, batch_size=BATCH_SIZE, write_graph=True),
+		#TQDMCallback(leave_inner=False, leave_outer=True)
 	]
 
 	#train model on dataset
@@ -319,7 +322,7 @@ for r in range(0, NUM_RUNS):
 
 
 	def normalize_data_set(x):
-		for period in x[0]:
+		for period in tqdm(x[0], desc='Normalizing data'):
 			for frame in period:
 				if frame[0] <= 0   or frame[0] >= 6:  frame[0] = 0   if frame[0] <= 0   else 6
 				frame[0] /= 6
